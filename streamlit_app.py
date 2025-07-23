@@ -3,7 +3,6 @@ import pandas as pd
 import requests
 import tldextract
 import re
-import dns.resolver
 import phonenumbers
 import time
 from urllib.parse import urljoin
@@ -15,30 +14,42 @@ from threading import Thread
 
 # ===== CONFIG =====
 API_KEY = st.secrets["API_KEY"]
+EMAIL_USER = st.secrets["EMAIL_USER"]
+EMAIL_PASSWORD = st.secrets["EMAIL_PASSWORD"]
+EMAIL_RECEIVER = st.secrets["EMAIL_RECEIVER"]
+SMTP_SERVER = st.secrets["SMTP_SERVER"]
+SMTP_PORT = st.secrets["SMTP_PORT"]
+
 USER_AGENT = {"User-Agent": "Mozilla/5.0"}
 CRAWL_LIMIT = 20
 THREADS = 5
-# ==================
 
 visited_pages = set()
 seen_domains = set()
 
+# ===== GOOGLE PLACES =====
 def google_places_search_all(query):
     results = []
     url = f"https://maps.googleapis.com/maps/api/place/textsearch/json?query={query}&key={API_KEY}"
 
     while True:
-        response = requests.get(url)
-        data = response.json()
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            data = response.json()
+        except Exception as e:
+            st.error(f"❌ Google Places API request failed: {e}")
+            return []
 
         if data.get("status") != "OK":
-            break
+            st.error(f"❌ API error: {data.get('status')} – {data.get('error_message')}")
+            return []
 
         results.extend(data.get("results", []))
-
         token = data.get("next_page_token")
+
         if token:
-            time.sleep(2)  # required delay
+            time.sleep(2)
             url = f"https://maps.googleapis.com/maps/api/place/textsearch/json?pagetoken={token}&key={API_KEY}"
         else:
             break
@@ -50,6 +61,7 @@ def get_place_details(place_id):
     res = requests.get(url)
     return res.json().get("result", {})
 
+# ===== SCRAPING HELPERS =====
 def extract_emails(text):
     return list(set(re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)))
 
@@ -111,7 +123,7 @@ def process_place(place, query):
     phone = details.get("formatted_phone_number", "")
     if not website:
         return None
-    domain = tldextract.extract(website).top_domain_under_public_suffix
+    domain = tldextract.extract(website).registered_domain
     if domain in seen_domains:
         return None
     seen_domains.add(domain)
@@ -130,17 +142,18 @@ def process_place(place, query):
         "place_id": place_id
     }
 
+# ===== EMAIL DELIVERY =====
 def send_email_with_csv(csv_data, filename="leads.csv"):
     msg = EmailMessage()
     msg["Subject"] = "Your Scraped Leads File"
-    msg["From"] = st.secrets["EMAIL_USER"]
-    msg["To"] = st.secrets["EMAIL_RECEIVER"]
+    msg["From"] = EMAIL_USER
+    msg["To"] = EMAIL_RECEIVER
     msg.set_content("Hi, here is your leads file. ✅")
     msg.add_attachment(csv_data, maintype="text", subtype="csv", filename=filename)
     try:
-        with smtplib.SMTP(st.secrets["SMTP_SERVER"], st.secrets["SMTP_PORT"]) as smtp:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as smtp:
             smtp.starttls()
-            smtp.login(st.secrets["EMAIL_USER"], st.secrets["EMAIL_PASSWORD"])
+            smtp.login(EMAIL_USER, EMAIL_PASSWORD)
             smtp.send_message(msg)
         st.success("📧 Email sent with leads file!")
     except Exception as e:
@@ -184,13 +197,12 @@ if submitted:
                         all_results.append(result)
         progress.progress((i + 1) / total)
 
-    import re
-    raw_name = f"{keyword_list[0]} in {location_list[0]} unique leads"
-    safe_filename = re.sub(r'[^a-zA-Z0-9_\- ]+', '', raw_name).strip().replace(" ", "_") + ".csv"
-
-    df = pd.DataFrame(all_results)
-    st.success(f"✅ Done! Found {len(df)} unique leads.")
-
-    st.download_button("⬇️ Download CSV", df.to_csv(index=False), file_name=safe_filename)
-    st.dataframe(df)
-    handle_background_email(df, safe_filename)
+    if all_results:
+        df = pd.DataFrame(all_results)
+        safe_filename = re.sub(r'[^a-zA-Z0-9_\-]+', "_", f"{keyword_list[0]}_in_{location_list[0]}_leads.csv")
+        st.success(f"✅ Done! Found {len(df)} unique leads.")
+        st.download_button("⬇️ Download CSV", df.to_csv(index=False), file_name=safe_filename)
+        st.dataframe(df)
+        handle_background_email(df, safe_filename)
+    else:
+        st.warning("No results were scraped. Check your keywords, location, or API key status.")
