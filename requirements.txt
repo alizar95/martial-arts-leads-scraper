@@ -1,0 +1,10 @@
+
+streamlit
+pandas
+requests
+beautifulsoup4
+tldextract
+phonenumbers
+dnspython
+googlesearch-python
+tqdm
