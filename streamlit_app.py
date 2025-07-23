@@ -28,7 +28,8 @@ def google_places_search_all(query):
         results.extend(data.get("results", []))
         token = data.get("next_page_token")
         if token:
-            st.sleep(2)
+            import time
+            time.sleep(2)
             url = f"https://maps.googleapis.com/maps/api/place/textsearch/json?pagetoken={token}&key={API_KEY}"
         else:
             break
