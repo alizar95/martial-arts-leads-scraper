@@ -139,7 +139,8 @@ if submitted:
     total = len(queries)
 
     for i, query in enumerate(queries):
-        places = google_places_search_all(query)
+        places = google_places_search_all(query) 
+        st.write(f"🔎 Query: {query} → Found {len(places)} places from Google")
         with ThreadPoolExecutor(max_workers=THREADS) as executor:
             futures = [executor.submit(process_place, place, query) for place in places]
             for future in as_completed(futures):
