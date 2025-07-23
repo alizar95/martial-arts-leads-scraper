@@ -9,6 +9,9 @@ import time
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import smtplib
+from email.message import EmailMessage
+from threading import Thread
 
 # ===== CONFIG =====
 API_KEY = st.secrets["API_KEY"]
@@ -124,12 +127,32 @@ def process_place(place, query):
         "LinkedIn": socials["linkedin"],
         "Maps Link": maps_url,
         "Query": query,
-        "place_id": place_id  # used for de-duplication
+        "place_id": place_id
     }
 
+def send_email_with_csv(csv_data, filename="leads.csv"):
+    msg = EmailMessage()
+    msg["Subject"] = "Your Scraped Leads File"
+    msg["From"] = st.secrets["EMAIL_USER"]
+    msg["To"] = st.secrets["EMAIL_RECEIVER"]
+    msg.set_content("Hi, here is your leads file. ✅")
+    msg.add_attachment(csv_data, maintype="text", subtype="csv", filename=filename)
+    try:
+        with smtplib.SMTP(st.secrets["SMTP_SERVER"], st.secrets["SMTP_PORT"]) as smtp:
+            smtp.starttls()
+            smtp.login(st.secrets["EMAIL_USER"], st.secrets["EMAIL_PASSWORD"])
+            smtp.send_message(msg)
+        st.success("📧 Email sent with leads file!")
+    except Exception as e:
+        st.error(f"❌ Email sending failed: {e}")
+
+def handle_background_email(df, filename):
+    csv = df.to_csv(index=False).encode("utf-8")
+    Thread(target=send_email_with_csv, args=(csv, filename)).start()
+
 # ===== STREAMLIT UI =====
-st.set_page_config(page_title="Martial Arts Leads Scraper", layout="wide")
-st.title("🥋 Martial Arts Leads Scraper")
+st.set_page_config(page_title="Now Scrap it, Next Use it", layout="wide")
+st.title("🚀 Now Scrap it, Next Use it")
 
 with st.form("input_form"):
     keywords = st.text_area("Enter Keywords (one per line)", "martial arts club\nboxing gloves shop")
@@ -161,7 +184,13 @@ if submitted:
                         all_results.append(result)
         progress.progress((i + 1) / total)
 
+    import re
+    raw_name = f"{keyword_list[0]} in {location_list[0]} unique leads"
+    safe_filename = re.sub(r'[^a-zA-Z0-9_\- ]+', '', raw_name).strip().replace(" ", "_") + ".csv"
+
     df = pd.DataFrame(all_results)
     st.success(f"✅ Done! Found {len(df)} unique leads.")
-    st.download_button("⬇️ Download CSV", df.to_csv(index=False), file_name="leads.csv")
+
+    st.download_button("⬇️ Download CSV", df.to_csv(index=False), file_name=safe_filename)
     st.dataframe(df)
+    handle_background_email(df, safe_filename)
