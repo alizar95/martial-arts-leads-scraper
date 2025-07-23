@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ===== CONFIG =====
-API_KEY = st.secrets["GOOGLE_API_KEY"]
+API_KEY = st.secrets["API_KEY"]
 USER_AGENT = {"User-Agent": "Mozilla/5.0"}
 CRAWL_LIMIT = 20
 THREADS = 5
