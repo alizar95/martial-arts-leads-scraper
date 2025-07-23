@@ -21,18 +21,25 @@ seen_domains = set()
 
 def google_places_search_all(query):
     results = []
-    url = f"https://maps.googleapis.com/maps/api/place/textsearch/json?query={quote(query)}&key={API_KEY}"
-    while url:
-        res = requests.get(url)
-        data = res.json()
+    url = f"https://maps.googleapis.com/maps/api/place/textsearch/json?query={query}&key={API_KEY}"
+
+    while True:
+        response = requests.get(url)
+        data = response.json()
+
+        if data.get("status") != "OK":
+            break
+
         results.extend(data.get("results", []))
+
         token = data.get("next_page_token")
         if token:
             import time
-            time.sleep(2)
+            time.sleep(2)  # required delay
             url = f"https://maps.googleapis.com/maps/api/place/textsearch/json?pagetoken={token}&key={API_KEY}"
         else:
             break
+
     return results
 
 def get_place_details(place_id):
