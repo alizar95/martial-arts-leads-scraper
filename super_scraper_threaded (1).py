@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
 # ========== CONFIG ==========
-API_KEY = "AIzaSyATDQWm8XiR-ajpLR3g3mDdATKngNTJI7U"
+API_KEY = os.getenv("API_KEY")
 OUTPUT_CSV = "combat_sports_leads.csv"
 USER_AGENT = {"User-Agent": "Mozilla/5.0"}
 CRAWL_LIMIT = 50
