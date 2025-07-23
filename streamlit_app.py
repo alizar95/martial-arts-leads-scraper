@@ -5,7 +5,8 @@ import tldextract
 import re
 import dns.resolver
 import phonenumbers
-from urllib.parse import urljoin, quote
+import time
+from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -34,7 +35,6 @@ def google_places_search_all(query):
 
         token = data.get("next_page_token")
         if token:
-            import time
             time.sleep(2)  # required delay
             url = f"https://maps.googleapis.com/maps/api/place/textsearch/json?pagetoken={token}&key={API_KEY}"
         else:
@@ -61,11 +61,11 @@ def extract_social_links(soup):
     links = {"facebook": "", "instagram": "", "linkedin": "", "whatsapp": ""}
     for a in soup.find_all("a", href=True):
         href = a["href"]
-        if "facebook.com" in href:
+        if "facebook.com" in href and not links["facebook"]:
             links["facebook"] = href
-        elif "instagram.com" in href:
+        elif "instagram.com" in href and not links["instagram"]:
             links["instagram"] = href
-        elif "linkedin.com" in href:
+        elif "linkedin.com" in href and not links["linkedin"]:
             links["linkedin"] = href
         elif "wa.me" in href or "whatsapp.com" in href:
             links["whatsapp"] = href
@@ -123,7 +123,8 @@ def process_place(place, query):
         "Instagram": socials["instagram"],
         "LinkedIn": socials["linkedin"],
         "Maps Link": maps_url,
-        "Query": query
+        "Query": query,
+        "place_id": place_id  # used for de-duplication
     }
 
 # ===== STREAMLIT UI =====
@@ -142,22 +143,25 @@ if submitted:
 
     st.info("🔍 Scraping started...")
     all_results = []
-
+    seen_place_ids = set()
     progress = st.progress(0)
     total = len(queries)
 
     for i, query in enumerate(queries):
-        places = google_places_search_all(query) 
+        places = google_places_search_all(query)
         st.write(f"🔎 Query: {query} → Found {len(places)} places from Google")
         with ThreadPoolExecutor(max_workers=THREADS) as executor:
             futures = [executor.submit(process_place, place, query) for place in places]
             for future in as_completed(futures):
                 result = future.result()
                 if result:
-                    all_results.append(result)
+                    place_id = result.get("place_id")
+                    if place_id and place_id not in seen_place_ids:
+                        seen_place_ids.add(place_id)
+                        all_results.append(result)
         progress.progress((i + 1) / total)
 
     df = pd.DataFrame(all_results)
-    st.success(f"✅ Done! Found {len(df)} leads.")
+    st.success(f"✅ Done! Found {len(df)} unique leads.")
     st.download_button("⬇️ Download CSV", df.to_csv(index=False), file_name="leads.csv")
     st.dataframe(df)
